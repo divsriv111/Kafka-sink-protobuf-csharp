@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+option csharp_namespace = "Kafka";
+
+
+message User {
+	int64 userid = 1;
+	string name = 2;
+	Contact contact =3;
+}
+
+message Contact {
+	int64 phone = 1;
+	string email = 2;
+	string fax = 3;
+}
