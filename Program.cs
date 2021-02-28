@@ -10,7 +10,7 @@ namespace Kafka
 {
     class Program
     {
-        private static async Task Main(string[] args)
+        static async Task Main(string[] args)
         {
             const string bootstrapServers = "localhost:9092";   //kafka server
             const string schemaRegistryUrl = "localhost:8081";  //schema registry server url
@@ -23,7 +23,7 @@ namespace Kafka
 
             var schemaRegistryConfig = new SchemaRegistryConfig
             {
-                Url = schemaRegistryUrl
+                Url = schemaRegistryUrl,
             };
 
             var consumerConfig = new ConsumerConfig
@@ -32,7 +32,7 @@ namespace Kafka
                 GroupId = "protobuf-sink-consumer-group"
             };
 
-            CancellationTokenSource cts = new CancellationTokenSource();
+            var cts = new CancellationTokenSource();
             var consumeTask = Task.Run(() =>
             {
                 using var consumer =
@@ -63,36 +63,38 @@ namespace Kafka
                 }
             }, cts.Token);
 
-            using var schemaRegistry = new CachedSchemaRegistryClient(schemaRegistryConfig);
-            using var producer = new ProducerBuilder<string, User>(producerConfig)
-                .SetValueSerializer(new ProtobufSerializer<User>(schemaRegistry))
-                .Build();
-            Console.WriteLine($"{producer.Name} producing on {topicName}.");
-
-            var i = 0;
-            string text;
-            Console.WriteLine(@"Enter user names (press 'q' to stop):");
-            while ((text = Console.ReadLine()) != "q")
+            using (var schemaRegistry = new CachedSchemaRegistryClient(schemaRegistryConfig))
+            using (var producer =
+                new ProducerBuilder<string, User>(producerConfig)
+                    .SetValueSerializer(new ProtobufSerializer<User>(schemaRegistry))
+                    .Build())
             {
-                var user = new User
-                {
-                    Userid = i++,
-                    Name = text,
-                    Contact = new Contact()
-                    {
-                        Phone = 999999999,
-                        Email = "protobuf@example.com",
-                        Fax = "NA"
-                    }
-                };
+                Console.WriteLine($"{producer.Name} producing on {topicName}. Enter user names, q to exit.");
 
-                await producer
-                    .ProduceAsync(topicName, new Message<string, User> { Key = user.Userid.ToString(), Value = user }, cts.Token)
-                    .ContinueWith(task => task.IsFaulted
-                        ? $"error producing message: {task.Exception.Message}"
-                        : $"produced to: {task.Result.TopicPartitionOffset}", cts.Token);
-                cts.Cancel();
+                var i = 0;
+                string text;
+                while ((text = Console.ReadLine()) != "q")
+                {
+                    var user = new User
+                    {
+                        Userid = i++,
+                        Name = text,
+                        Contact = new Contact()
+                        {
+                            Phone = 999999999,
+                            Email = "protobuf@example.com",
+                            Fax = "NA"
+                        }
+                    };
+                    await producer
+                        .ProduceAsync(topicName, new Message<string, User> { Key = user.Userid.ToString(), Value = user }, cts.Token)
+                        .ContinueWith(task => task.IsFaulted
+                            ? $"error producing message: {task.Exception.Message}"
+                            : $"produced to: {task.Result.TopicPartitionOffset}", cts.Token);
+                }
             }
+
+            cts.Cancel();
         }
     }
 }
